@@ -1,5 +1,7 @@
 # Interstate
 
+A minimal, persistent, key-value store for Golang.
+
 **Note**
 
 Interstate is not meant for heavy workloads or a large number of key-value
