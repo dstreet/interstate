@@ -1,7 +1,5 @@
 # Interstate
 
-gi
-
 **Note**
 
 Interstate is not meant for heavy workloads or a large number of key-value
