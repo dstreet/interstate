@@ -17,19 +17,50 @@ var (
 	ErrNoLock      = errors.New("no lock has been aquired")
 )
 
+type UpdateOperation string
+
+var (
+	UpdateOperationPut    UpdateOperation = "PUT"
+	UpdateOperationDelete UpdateOperation = "DELETE"
+)
+
+type SubscribeHandler func(op UpdateOperation, data []byte)
+type UnsubscribeFn func()
+
 type Store struct {
-	dir string
+	dir      string
+	notifier Notifier
 }
 
-func NewStore(dir string) *Store {
-	return &Store{
+type Notifier interface {
+	Put(key string, data []byte)
+	Delete(key string)
+	Subscribe(key string, handler SubscribeHandler) UnsubscribeFn
+}
+
+type storeOptionsFn func(*Store)
+
+func WithNotifier(n Notifier) storeOptionsFn {
+	return func(s *Store) {
+		s.notifier = n
+	}
+}
+
+func NewStore(dir string, opts ...storeOptionsFn) *Store {
+	store := &Store{
 		dir: dir,
 	}
+
+	for _, o := range opts {
+		o(store)
+	}
+
+	return store
 }
 
 // Open the store for reating and writing.
 func (s *Store) Open() error {
-	if err := os.MkdirAll(s.dir, 0644); err != nil {
+	if err := os.MkdirAll(s.dir, 0755); err != nil {
 		return fmt.Errorf("failed to create store directory: %w", err)
 	}
 
@@ -133,10 +164,19 @@ func (s *Store) Updater(key string, opts ...updaterOptionsFn) (*Updater, error) 
 	defer f.Close()
 
 	return &Updater{
-		key:     key,
-		keyPath: path.Join(s.dir, hashKey(key)),
-		lock:    lock,
+		key:      key,
+		keyPath:  path.Join(s.dir, hashKey(key)),
+		lock:     lock,
+		notifier: s.notifier,
 	}, nil
+}
+
+func (s *Store) Subscribe(key string, handler func(UpdateOperation, []byte)) UnsubscribeFn {
+	if s.notifier == nil {
+		return func() {}
+	}
+
+	return s.notifier.Subscribe(key, handler)
 }
 
 type Updater struct {
@@ -144,6 +184,7 @@ type Updater struct {
 	keyPath  string
 	lock     string
 	unlocked bool
+	notifier Notifier
 }
 
 // Put the data on the key.
@@ -152,8 +193,12 @@ func (u *Updater) Put(data []byte) error {
 		return ErrNoLock
 	}
 
-	if err := os.WriteFile(u.keyPath, data, 0644); err != nil {
+	if err := os.WriteFile(u.keyPath, data, 0755); err != nil {
 		return fmt.Errorf("failed to write data for key %q: %w", u.key, err)
+	}
+
+	if u.notifier != nil {
+		u.notifier.Put(u.key, data)
 	}
 
 	return nil
@@ -167,6 +212,10 @@ func (u *Updater) Delete() error {
 
 	if err := os.Remove(u.keyPath); err != nil {
 		return fmt.Errorf("failed to delete data for key %q: %w", u.key, err)
+	}
+
+	if u.notifier != nil {
+		u.notifier.Delete(u.key)
 	}
 
 	return nil
@@ -192,7 +241,7 @@ func hashKey(key string) string {
 }
 
 func tryLock(lock string) error {
-	delay := time.Duration(rand.IntN(50)) * time.Millisecond
+	delay := time.Duration(rand.IntN(500)) * time.Millisecond
 	time.Sleep(delay)
 
 	exists, err := fileExists(lock)
