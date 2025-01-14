@@ -1,0 +1,10 @@
+with-expecter: True
+dir: "{{ .InterfaceDirRelative }}/mocks"
+mockname: "{{.InterfaceName}}"
+outpkg: "mocks"
+filename: "{{.InterfaceName}}.go"
+all: True
+packages:
+  github.com/dstreet/interstate:
+    config:
+      recursive: True
