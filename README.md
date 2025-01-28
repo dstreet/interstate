@@ -1,7 +1,7 @@
-# Interstate
-
 > [!WARNING]
 > This is still experimental. Use at your own risk.
+
+# Interstate
 
 Interstate is a Golang library for state replication between any number of local
 processes. This is particularly useful for CLI tools where multiple long-lived
